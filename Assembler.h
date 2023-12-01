@@ -45,6 +45,9 @@ public:
 
     // Converts a decimal number to a binary string of a specified bit size
     string convertBinary(int dec, int bit);
+
+    void firstPass(bool label, int labellength, string line);
+    void secondPass();
 };
 
 #endif

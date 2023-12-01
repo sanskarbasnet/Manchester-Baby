@@ -22,12 +22,12 @@ int main()
     string answer;
     getline(cin, answer);
 
-// Create an Assembler object and set the source code file name.
+    // Create an Assembler object and set the source code file name.
     Assembler *assembler = new Assembler();
     assembler->setfileName(answer);
 
     cout << "Output will be saved as output.txt" << endl;
- // Load the source code, process it in two passes, and generate machine code.
+    // Load the source code, process it in two passes, and generate machine code.
     assembler->loadFile();
     delete assembler; // Deallocate memory.
 }
@@ -84,6 +84,14 @@ void Assembler::loadFile()
 
     for (int i = 0; i < 2; i++)
     {
+        if (i == 0)
+        {
+            cout << "Starting First Pass" << endl;
+        }
+        else
+        {
+            cout << "Starting Second Pass" << endl;
+        }
         ifstream source(fileName.c_str());
         if (source.is_open())
         {
@@ -107,171 +115,181 @@ void Assembler::decodeLine(int pass, string line)
 
     // Check if the line is not a comment
     if (first != ';')
-    { 
+    {
         // First pass
         if (pass == 1)
         {
-            line.erase(remove(line.begin(), line.end(), ' '), line.end()); // Remove spaces from the line
-
-            // Check for labels
-            for (int i = 0; i < line.length(); i++)
-            {
-                char letter = line[i];
-                if (letter == ':')
-                {
-                    string tempLabel;
-                    labellength = i + 1;
-                    tempLabel = line.substr(0, i);
-                    Label *newLabel = new Label(tempLabel, currentLineNum, i);
-                    if (newLabel == NULL)
-                    {
-                        cout << "Memory Allocation failed." << endl;
-                        exit(1);
-                    }
-                    if (symbolTable.size() <= currentLineNum)
-                    {
-                        symbolTable.resize(currentLineNum + 1);
-                    }
-                    symbolTable[currentLineNum] = newLabel; // Add label to SymbolTable
-                    label = true;
-                    break;
-                }
-            }
-
-            string opcode = "";
-            string operand = "";
-
-            // If there was no label
-            if (!label)
-            {
-                opcode = line.substr(0, 3);
-                for (int i = 3; i < line.length(); i++)
-                {
-                    if (line[i] != ';')
-                    {
-                        operand += line[i];
-                    }
-                    else
-                    {
-                        break;
-                    }
-                }
-            }
-            else if (label)
-            {
-                opcode = line.substr(labellength, 3);
-                for (int i = labellength + 3; i < line.length(); i++)
-                {
-                    if (line[i] != ';')
-                    {
-                        operand += line[i];
-                    }
-                    else
-                    {
-                        break;
-                    }
-                }
-            }
-
-            string tempstoreline;
-
-            // Handle special cases for opcode "STP" and "VAR"
-            if (opcode == "STP")
-            {
-                opcode = getOpCode(opcode);
-                operand = "0";
-                operand = convertBinary(atoi(operand.c_str()), 13);
-                tempstoreline = operand + opcode;
-                tempstoreline.append(16, '0');
-            }
-            else if (opcode == "VAR")
-            {
-                operand = convertBinary(atoi(operand.c_str()), 32);
-                tempstoreline = operand;
-            }
-            else
-            {
-                opcode = getOpCode(opcode);
-
-                // If the operand is a variable
-                if (isalpha(operand[0]))
-                {
-                    tempstoreline = operand + "|"; // Used to easily distinguish the end of a variable later on
-                    tempstoreline = tempstoreline + opcode;
-                    tempstoreline.append(16, '0');
-                }
-                else
-                {
-                    operand = convertBinary(atoi(operand.c_str()), 13);
-                    tempstoreline = operand + opcode;
-                    tempstoreline.append(16, '0');
-                }
-            }
-
-            string *permstoreline = new string(tempstoreline); // Create a new string with the store line inside
-            if (tempStorage.size() <= currentLineNum)
-            {
-                tempStorage.resize(currentLineNum + 1);
-            }
-            tempStorage[currentLineNum] = permstoreline; // Add it to our temp storage
+            firstPass(label, labellength, line);
         }
         // Second pass
         else
         {
-            string address = "";
-            string *tempLine;
-            string var;
-
-            // Iterate through the tempStorage to replace variables with addresses
-            for (int i = 0; i < tempStorage.size(); i++)
-            {
-                tempLine = tempStorage[i];
-                if (tempLine != NULL)
-                {
-                    string defstring = tempStorage[i]->c_str(); // Get string from pointer
-                    char letter = defstring[0];
-
-                    if (isalpha(letter))
-                    { // If the first letter is a variable, change it to an address
-                        var = defstring.substr(0, defstring.find("|")); // Used to find where the variable ends
-
-                        // Search for the variable in the symbolTable
-                        for (int j = 0; j < symbolTable.size(); j++)
-                        {
-                            if (symbolTable.at(j) != NULL)
-                            {
-                                if (symbolTable.at(j)->getSymbol() == var)
-                                {
-                                    // Get the opcode from the current version of defstring
-                                    string tempopcode = defstring.substr(defstring.find("|") + 1, 3);
-                                    // Rewrite defstring with the address
-                                    cout << "Var: " << var << " Converted to : " << symbolTable.at(j)->getAddress() << endl;
-                                    defstring = (symbolTable.at(j)->getAddress()) + tempopcode;
-                                    defstring.append(16, '0');
-                                    // Break out of the loop for better readability
-                                    goto finish;
-                                }
-                            }
-                        }
-                    finish:
-                        delete (tempStorage[i]);
-                        string *defstringPt = new string(defstring);
-                        if (defstringPt == NULL)
-                        {
-                            cout << "Memory Allocation ERROR." << endl;
-                            exit(1);
-                        }
-                        tempStorage[i] = defstringPt;
-                    }
-                }
-            }
+            secondPass();
         }
 
-        cout << "Line: " << currentLineNum << " Pass: " << pass << endl; // Print current location
+        cout << "Line: " << currentLineNum << endl; // Print current location
         currentLineNum++;
     }
 }
 
+void Assembler::firstPass(bool label, int labellength, string line)
+{
+    line.erase(remove(line.begin(), line.end(), ' '), line.end()); // Remove spaces from the line
+
+    // Check for labels
+    for (int i = 0; i < line.length(); i++)
+    {
+        char letter = line[i];
+        if (letter == ':')
+        {
+            string tempLabel;
+            labellength = i + 1;
+            tempLabel = line.substr(0, i);
+            Label *newLabel = new Label(tempLabel, currentLineNum, i);
+            if (newLabel == NULL)
+            {
+                cout << "Memory Allocation failed." << endl;
+                exit(1);
+            }
+            if (symbolTable.size() <= currentLineNum)
+            {
+                symbolTable.resize(currentLineNum + 1);
+            }
+            symbolTable[currentLineNum] = newLabel; // Add label to SymbolTable
+            label = true;
+            break;
+        }
+    }
+
+    string opcode = "";
+    string operand = "";
+
+    // If there was no label
+    if (!label)
+    {
+        opcode = line.substr(0, 3);
+        for (int i = 3; i < line.length(); i++)
+        {
+            if (line[i] != ';')
+            {
+                operand += line[i];
+            }
+            else
+            {
+                break;
+            }
+        }
+    }
+    else if (label)
+    {
+        opcode = line.substr(labellength, 3);
+        for (int i = labellength + 3; i < line.length(); i++)
+        {
+            if (line[i] != ';')
+            {
+                operand += line[i];
+            }
+            else
+            {
+                break;
+            }
+        }
+    }
+
+    string tempstoreline;
+
+    // Handle special cases for opcode "STP" and "VAR"
+    if (opcode == "STP")
+    {
+        opcode = getOpCode(opcode);
+        operand = "0";
+        operand = convertBinary(atoi(operand.c_str()), 13);
+        tempstoreline = operand + opcode;
+        tempstoreline.append(16, '0');
+    }
+    else if (opcode == "VAR")
+    {
+        operand = convertBinary(atoi(operand.c_str()), 32);
+        tempstoreline = operand;
+    }
+    else
+    {
+        opcode = getOpCode(opcode);
+
+        // If the operand is a variable
+        if (isalpha(operand[0]))
+        {
+            tempstoreline = operand + "|"; // Used to easily distinguish the end of a variable later on
+            tempstoreline = tempstoreline + opcode;
+            tempstoreline.append(16, '0');
+        }
+        else
+        {
+            operand = convertBinary(atoi(operand.c_str()), 13);
+            tempstoreline = operand + opcode;
+            tempstoreline.append(16, '0');
+        }
+    }
+
+    string *permstoreline = new string(tempstoreline); // Create a new string with the store line inside
+    if (tempStorage.size() <= currentLineNum)
+    {
+        tempStorage.resize(currentLineNum + 1);
+    }
+    tempStorage[currentLineNum] = permstoreline; // Add it to our temp storage
+}
+
+void Assembler::secondPass()
+{
+
+    string address = "";
+    string *tempLine;
+    string var;
+
+    // Iterate through the tempStorage to replace variables with addresses
+    for (int i = 0; i < tempStorage.size(); i++)
+    {
+        tempLine = tempStorage[i];
+        if (tempLine != NULL)
+        {
+            string defstring = tempStorage[i]->c_str(); // Get string from pointer
+            char letter = defstring[0];
+
+            if (isalpha(letter))
+            {                                                   // If the first letter is a variable, change it to an address
+                var = defstring.substr(0, defstring.find("|")); // Used to find where the variable ends
+
+                // Search for the variable in the symbolTable
+                for (int j = 0; j < symbolTable.size(); j++)
+                {
+                    if (symbolTable.at(j) != NULL)
+                    {
+                        if (symbolTable.at(j)->getSymbol() == var)
+                        {
+                            // Get the opcode from the current version of defstring
+                            string tempopcode = defstring.substr(defstring.find("|") + 1, 3);
+                            // Rewrite defstring with the address
+                            cout << "Var: " << var << " Converted to : " << symbolTable.at(j)->getAddress() << endl;
+                            defstring = (symbolTable.at(j)->getAddress()) + tempopcode;
+                            defstring.append(16, '0');
+                            // Break out of the loop for better readability
+                            goto finish;
+                        }
+                    }
+                }
+            finish:
+                delete (tempStorage[i]);
+                string *defstringPt = new string(defstring);
+                if (defstringPt == NULL)
+                {
+                    cout << "Memory Allocation ERROR." << endl;
+                    exit(1);
+                }
+                tempStorage[i] = defstringPt;
+            }
+        }
+    }
+}
 // Save the generated machine code to an output file named "output.txt".
 void Assembler::saveFile()
 {
@@ -339,41 +357,46 @@ string Assembler::getOpCode(string instruction)
     }
 }
 
-string Assembler::convertBinary(int dec,int bit){
-	string bin = "";	//binary value
-	int rem;			//remainder
-	int binSize; 		//size of bin value 
-	int decTemp = dec;		//temp decimal value
+string Assembler::convertBinary(int dec, int bit)
+{
+    string bin = "";   // binary value
+    int rem;           // remainder
+    int binSize;       // size of bin value
+    int decTemp = dec; // temp decimal value
 
+    // make decimal positive for calculation
+    if (dec < 0)
+    {
+        decTemp = -decTemp;
+    }
 
-	//make decimal positive for calculation
-	if(dec < 0){
-		decTemp = -decTemp;
-	}
+    while (decTemp != 0)
+    {
+        rem = decTemp % 2;
+        decTemp = decTemp / 2;
+        if (rem == 0)
+        {
+            bin = bin + '0';
+        }
+        else
+        {
+            bin = bin + '1';
+        }
+    }
 
-	while(decTemp != 0)
-	{
-		rem = decTemp%2;
-		decTemp = decTemp/2;
-		if(rem == 0){
-			bin = bin + '0';
-		}
-		else{
-			bin = bin + '1';
-		}
-	}
+    binSize = bin.length();
+    if (binSize < bit - 1)
+    {
+        bin.append((bit - 1) - (binSize), '0');
+    }
 
-	binSize = bin.length();
-	if(binSize < bit-1){
-		bin.append((bit-1) - (binSize),'0');
-	}
-
-	if(dec < 0){
-		bin = bin + '1';
-	}
-	else{
-		bin = bin + '0';
-	}
-	return bin;
-
+    if (dec < 0)
+    {
+        bin = bin + '1';
+    }
+    else
+    {
+        bin = bin + '0';
+    }
+    return bin;
 }
